@@ -68,7 +68,7 @@ int main(int argc, char** argv)
 #ifdef HAS_SIGNALFD
     if (sigprocmask(SIG_BLOCK, &sigset, NULL) < 0) {
         perror ("sigprocmask");
-        return 1;
+        goto kill;
     }
     if ((chldfd = signalfd(-1, &sigset, SFD_NONBLOCK|SFD_CLOEXEC)) < 0) {
         perror("signalfd");
@@ -132,7 +132,6 @@ int main(int argc, char** argv)
             }
 #ifdef HAS_SIGNALFD
             else if (events[i].data.fd == chldfd) {
-                fprintf(stderr, "SIGCHLD\n");
                 running = false;
             }
 #endif
