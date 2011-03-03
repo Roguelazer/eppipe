@@ -56,6 +56,23 @@ int main(int argc, char** argv)
                 "Runs `command` under eppipe\n");
         return 2;
     }
+    // Set up a signalfd to handle the SIGCHLD
+    if (sigemptyset(&sigset)) {
+        perror("sigemptyset");
+        goto kill;
+    }
+    if (sigaddset(&sigset, SIGCHLD)) {
+        perror("sigaddset");
+        goto kill;
+    }
+#ifdef HAS_SIGNALFD
+    if ((chldfd = signalfd(-1, &sigset, SFD_NONBLOCK|SFD_CLOEXEC)) < 0) {
+        perror("signalfd");
+        goto kill;
+    }
+#else
+    signal(SIGCHLD, handler);
+#endif
     pid = fork();
     if (pid == 0) {
         err = execvp(argv[1], argv + 1);
@@ -68,23 +85,7 @@ int main(int argc, char** argv)
         perror("fork");
         return EXIT_FAILURE;
     }
-    // Set up a signalfd to handle the SIGCHLD
-    if (sigemptyset(&sigset)) {
-        perror("sigemptyset");
-        goto kill;
-    }
-    if (sigaddset(&sigset, SIGCHLD)) {
-        perror("sigaddset");
-        goto kill;
-    }
-#ifdef HAS_SIGNALFD
-    if ((chldfd = signalfd(-1, &sigset, SFD_NONBLOCK)) < 0) {
-        perror("signalfd");
-        goto kill;
-    }
-#else
-    signal(SIGCHLD, handler);
-#endif
+    fcntl(STDOUT_FILENO, F_SETFL, fcntl(STDOUT_FILENO, F_GETFL) | O_NONBLOCK);
     if ((ep = epoll_create(3)) < 0) {
         perror("epoll_create");
         goto kill;
@@ -94,7 +95,7 @@ int main(int argc, char** argv)
         goto kill;
     }
 #ifdef HAS_SIGNALFD
-    if (add_watch(ep, chldfd, EPOLLIN)) {
+    if (add_watch(ep, chldfd, EPOLLIN|EPOLLHUP)) {
         perror("add_watch signalfd");
         goto kill;
     }
@@ -104,8 +105,11 @@ int main(int argc, char** argv)
 #ifdef HAS_SIGNALFD
         if ((n_events = epoll_wait(ep, events, NUM_EVENTS, 10000)) < 0) {
 #else
-        if ((n_events = epoll_pwait(ep, events, NUM_EVENTS, 100, &sigset)) < 0) {
+        if ((n_events = epoll_pwait(ep, events, NUM_EVENTS, 500, &sigset)) < 0) {
 #endif
+            if (errno == EINTR) {
+                continue;
+            }
             perror("epoll_wait");
             goto kill;
         }
@@ -124,11 +128,12 @@ int main(int argc, char** argv)
             }
 #ifdef HAS_SIGNALFD
             else if (events[i].data.fd == chldfd) {
+                fprintf(stderr, "SIGCHLD\n");
                 running = false;
             }
 #endif
             else {
-                printf("Activity on unrecognized fd!\n");
+                fprintf(stderr, "Activity on unrecognized fd!\n");
                 goto kill;
             }
         }

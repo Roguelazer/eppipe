@@ -2,7 +2,7 @@ SOURCES := $(wildcard *.c *.h)
 TARGETS := eppipe
 PUPPET_TARGETS := eppipe-32 eppipe-64
 
-CFLAGS += -Wall -ggdb -Wextra -pedantic -std=c99 
+CFLAGS += -Wall -ggdb -Wextra -pedantic -std=c99
 
 all: $(TARGETS)
 
