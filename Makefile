@@ -26,4 +26,5 @@ dep:
 	sh ./automake.sh
 
 #### AUTO ####
+eppipe.o: eppipe.c
 #### END AUTO ####
