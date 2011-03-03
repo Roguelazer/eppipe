@@ -1,4 +1,4 @@
-#define _GNU_SOURCE
+#define _XOPEN_SOURCE 600
 
 #include <errno.h>
 #include <fcntl.h>
@@ -38,7 +38,10 @@ int main(int argc, char** argv)
                 "Runs `command` under eppipe\n");
         return 2;
     }
-    pipe2(pipefd, O_NONBLOCK);
+    // Would use pipe2(2) for the following, but 2.6.27 is a bit new-ish
+    pipe(pipefd);
+    fcntl(pipefd[0], F_SETFL, fcntl(pipefd[0], F_GETFL) | O_NONBLOCK);
+    fcntl(pipefd[1], F_SETFL, fcntl(pipefd[1], F_GETFL) | O_NONBLOCK);
     pid = fork();
     if (pid == 0) {
         // Close the read end of the pipe
