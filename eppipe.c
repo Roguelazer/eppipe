@@ -22,7 +22,7 @@
 #include <unistd.h>
 
 #define NUM_EVENTS 16
-#define BUFSIZE 1024
+#define BUFSIZE 4096
 
 int add_watch(int epfd, int fd, uint32_t events)
 {
@@ -68,7 +68,6 @@ int main(int argc, char** argv)
         }
     }
     close(pipefd[1]);
-    fcntl(STDOUT_FILENO, F_SETFL, fcntl(STDOUT_FILENO, F_GETFL) | O_NONBLOCK);
 #ifdef HAS_SIGNALFD
     // Set up a signalfd to handle the SIGCHLD
     if (sigemptyset(&sigset)) {
@@ -127,7 +126,17 @@ int main(int argc, char** argv)
                 do {
                     read_b = read(pipefd[0], buf, BUFSIZE);
                     if (read_b > 0) {
-                        write(STDOUT_FILENO, buf, read_b);
+                        ssize_t written_b = 0;
+                        while (read_b > written_b) {
+                            ssize_t res = write(STDOUT_FILENO, buf + written_b, read_b - written_b);
+                            if (res > 0) {
+                                written_b += res;
+                            }
+                            if (res < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+                                perror("write");
+                                goto kill;
+                            }
+                        }
                     }
                     else if (read_b == 0) {
                         running = false;
