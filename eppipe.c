@@ -16,7 +16,9 @@
 #include <sys/epoll.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#ifdef HAS_SIGNALFD
 #include <sys/signalfd.h>
+#endif
 #include <unistd.h>
 
 #define NUM_EVENTS 16
@@ -33,11 +35,13 @@ int add_watch(int epfd, int fd, uint32_t events)
 int main(int argc, char** argv)
 {
     int pipefd[2];
-    int chldfd;
     int pid = 0, err, ep;
     int status;
     bool running = true;
+#ifdef HAS_SIGNALFD
+    int chldfd;
     sigset_t sigset;
+#endif
     struct epoll_event events[NUM_EVENTS];
 
     if (argc < 2) {
@@ -54,8 +58,6 @@ int main(int argc, char** argv)
         // Close the read end of the pipe
         close(pipefd[0]);
         // Make stdout and stderr
-        close(STDOUT_FILENO);
-        close(STDERR_FILENO);
         dup2(pipefd[1], STDOUT_FILENO);
         dup2(pipefd[1], STDERR_FILENO);
         err = execvp(argv[1], argv + 1);
@@ -67,7 +69,8 @@ int main(int argc, char** argv)
     }
     close(pipefd[1]);
     fcntl(STDOUT_FILENO, F_SETFL, fcntl(STDOUT_FILENO, F_GETFL) | O_NONBLOCK);
-    fcntl(STDIN_FILENO, F_SETFL, fcntl(STDOUT_FILENO, F_GETFL) | O_NONBLOCK);
+    fcntl(STDIN_FILENO, F_SETFL, fcntl(STDIN_FILENO, F_GETFL) | O_NONBLOCK);
+#ifdef HAS_SIGNALFD
     // Set up a signalfd to handle the SIGCHLD
     if (sigemptyset(&sigset)) {
         perror("sigemptyset");
@@ -81,6 +84,7 @@ int main(int argc, char** argv)
         perror("signalfd");
         goto kill;
     }
+#endif
     ep = epoll_create(3);
     if (add_watch(ep, STDIN_FILENO, EPOLLIN) < 0) {
         perror("add_watch stdout");
@@ -90,10 +94,12 @@ int main(int argc, char** argv)
         perror("add_watch pipe");
         goto kill;
     }
+#ifdef HAS_SIGNALFD
     if (add_watch(ep, chldfd, EPOLLIN)) {
         perror("add_watch signalfd");
         goto kill;
     }
+#endif
     while(running) {
         int n_events, i;
         if ((n_events = epoll_wait(ep, events, NUM_EVENTS, 10000)) < 0) {
@@ -128,10 +134,12 @@ int main(int argc, char** argv)
                     perror("read");
                 }
             }
+#ifdef HAS_SIGNALFD
             else if (events[i].data.fd == chldfd) {
                 fprintf(stderr, "Got a SIGCHLD without getting a 0-byte read on the pipe\n");
                 running = false;
             }
+#endif
             else {
                 printf("Activity on unrecognized fd!\n");
                 goto kill;
@@ -139,6 +147,8 @@ int main(int argc, char** argv)
         }
     }
 wait:
+    fflush(stdout);
+    fflush(stderr);
     waitpid(pid, &status, 0);
     return WEXITSTATUS(status);
 kill:
