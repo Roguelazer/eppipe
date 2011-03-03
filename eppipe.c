@@ -69,7 +69,6 @@ int main(int argc, char** argv)
     }
     close(pipefd[1]);
     fcntl(STDOUT_FILENO, F_SETFL, fcntl(STDOUT_FILENO, F_GETFL) | O_NONBLOCK);
-    fcntl(STDIN_FILENO, F_SETFL, fcntl(STDIN_FILENO, F_GETFL) | O_NONBLOCK);
 #ifdef HAS_SIGNALFD
     // Set up a signalfd to handle the SIGCHLD
     if (sigemptyset(&sigset)) {
@@ -85,8 +84,11 @@ int main(int argc, char** argv)
         goto kill;
     }
 #endif
-    ep = epoll_create(3);
-    if (add_watch(ep, STDIN_FILENO, EPOLLIN) < 0) {
+    if ((ep = epoll_create(3)) < 0) {
+        perror("epoll_create");
+        goto kill;
+    }
+    if (add_watch(ep, STDOUT_FILENO, EPOLLIN|EPOLLHUP) < 0) {
         perror("add_watch stdout");
         goto kill;
     }
@@ -107,15 +109,16 @@ int main(int argc, char** argv)
             goto kill;
         }
         for (i = 0; i < n_events; ++i) {
-            if (events[i].data.fd == STDIN_FILENO) {
-                char buf[BUFSIZE];
+            if (events[i].data.fd == STDOUT_FILENO) {
+                char buf[1];
                 ssize_t read_b = 0;
                 do {
-                    read_b = read(STDIN_FILENO, buf, BUFSIZE);
+                    read_b = read(STDOUT_FILENO, buf, 1);
                 } while (read_b > 0);
                 if (read_b == 0) {
                     kill(pid, SIGTERM);
                     running = false;
+                    break;
                 }
             }
             else if (events[i].data.fd == pipefd[0]) {
