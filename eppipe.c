@@ -66,6 +66,10 @@ int main(int argc, char** argv)
         goto kill;
     }
 #ifdef HAS_SIGNALFD
+    if (sigprocmask(SIG_BLOCK, &sigset, NULL) < 0) {
+        perror ("sigprocmask");
+        return 1;
+    }
     if ((chldfd = signalfd(-1, &sigset, SFD_NONBLOCK|SFD_CLOEXEC)) < 0) {
         perror("signalfd");
         goto kill;
