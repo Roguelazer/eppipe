@@ -6,6 +6,8 @@ CFLAGS += -Wall -ggdb -Wextra -pedantic -std=c99
 
 all: $(TARGETS)
 
+puppet: $(PUPPET_TARGETS)
+
 .PHONY : force
 force: clean all
 

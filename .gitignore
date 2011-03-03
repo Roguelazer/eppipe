@@ -1,2 +1,4 @@
 *.o
 eppipe
+eppipe-32
+eppipe-64
