@@ -1,3 +1,10 @@
+/*
+ * Copyright (c) 2011 Yelp, Inc.
+ *
+ * Available under the ISC License. For details, see
+ * LICENSE
+ */
+
 #define _XOPEN_SOURCE 600
 
 #include <errno.h>
