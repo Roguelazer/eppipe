@@ -89,7 +89,6 @@ int main(int argc, char** argv)
         perror("fork");
         return EXIT_FAILURE;
     }
-    fcntl(STDOUT_FILENO, F_SETFL, fcntl(STDOUT_FILENO, F_GETFL) | O_NONBLOCK);
     if ((ep = epoll_create(3)) < 0) {
         perror("epoll_create");
         goto kill;
