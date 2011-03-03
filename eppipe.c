@@ -22,7 +22,16 @@
 #include <unistd.h>
 
 #define NUM_EVENTS 16
-#define BUFSIZE 4096
+
+static int pid = 0;
+static bool running = true;
+
+/* Handler for SIGCHLD */
+void handler(int signal)
+{
+    (void) signal;
+    running = false;
+}
 
 int add_watch(int epfd, int fd, uint32_t events)
 {
@@ -34,14 +43,12 @@ int add_watch(int epfd, int fd, uint32_t events)
 
 int main(int argc, char** argv)
 {
-    int pipefd[2];
-    int pid = 0, err, ep;
+    int err, ep;
     int status;
-    bool running = true;
 #ifdef HAS_SIGNALFD
     int chldfd;
-    sigset_t sigset;
 #endif
+    sigset_t sigset;
     struct epoll_event events[NUM_EVENTS];
 
     if (argc < 2) {
@@ -49,26 +56,18 @@ int main(int argc, char** argv)
                 "Runs `command` under eppipe\n");
         return 2;
     }
-    // Would use pipe2(2) for the following, but 2.6.27 is a bit new-ish
-    pipe(pipefd);
-    fcntl(pipefd[0], F_SETFL, fcntl(pipefd[0], F_GETFL) | O_NONBLOCK);
-    fcntl(pipefd[1], F_SETFL, fcntl(pipefd[1], F_GETFL) | O_NONBLOCK);
     pid = fork();
     if (pid == 0) {
-        // Close the read end of the pipe
-        close(pipefd[0]);
-        // Make stdout and stderr
-        dup2(pipefd[1], STDOUT_FILENO);
-        dup2(pipefd[1], STDERR_FILENO);
         err = execvp(argv[1], argv + 1);
         if (err) {
             fprintf(stderr, "Tried to exec '%s'\n", argv[1]);
             perror("execlp");
             return EXIT_FAILURE;
         }
+    } else if (pid < 0) {
+        perror("fork");
+        return EXIT_FAILURE;
     }
-    close(pipefd[1]);
-#ifdef HAS_SIGNALFD
     // Set up a signalfd to handle the SIGCHLD
     if (sigemptyset(&sigset)) {
         perror("sigemptyset");
@@ -78,10 +77,13 @@ int main(int argc, char** argv)
         perror("sigaddset");
         goto kill;
     }
+#ifdef HAS_SIGNALFD
     if ((chldfd = signalfd(-1, &sigset, SFD_NONBLOCK)) < 0) {
         perror("signalfd");
         goto kill;
     }
+#else
+    signal(SIGCHLD, handler);
 #endif
     if ((ep = epoll_create(3)) < 0) {
         perror("epoll_create");
@@ -89,10 +91,6 @@ int main(int argc, char** argv)
     }
     if (add_watch(ep, STDOUT_FILENO, EPOLLIN|EPOLLHUP) < 0) {
         perror("add_watch stdout");
-        goto kill;
-    }
-    if (add_watch(ep, pipefd[0], EPOLLIN) < 0) {
-        perror("add_watch pipe");
         goto kill;
     }
 #ifdef HAS_SIGNALFD
@@ -103,7 +101,11 @@ int main(int argc, char** argv)
 #endif
     while(running) {
         int n_events, i;
+#ifdef HAS_SIGNALFD
         if ((n_events = epoll_wait(ep, events, NUM_EVENTS, 10000)) < 0) {
+#else
+        if ((n_events = epoll_pwait(ep, events, NUM_EVENTS, 100, &sigset)) < 0) {
+#endif
             perror("epoll_wait");
             goto kill;
         }
@@ -120,35 +122,8 @@ int main(int argc, char** argv)
                     break;
                 }
             }
-            else if (events[i].data.fd == pipefd[0]) {
-                char buf[BUFSIZE];
-                ssize_t read_b = 0;
-                do {
-                    read_b = read(pipefd[0], buf, BUFSIZE);
-                    if (read_b > 0) {
-                        ssize_t written_b = 0;
-                        while (read_b > written_b) {
-                            ssize_t res = write(STDOUT_FILENO, buf + written_b, read_b - written_b);
-                            if (res > 0) {
-                                written_b += res;
-                            }
-                            if (res < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-                                perror("write");
-                                goto kill;
-                            }
-                        }
-                    }
-                    else if (read_b == 0) {
-                        running = false;
-                    }
-                } while (read_b > 0);
-                if (read_b == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
-                    perror("read");
-                }
-            }
 #ifdef HAS_SIGNALFD
             else if (events[i].data.fd == chldfd) {
-                fprintf(stderr, "Got a SIGCHLD without getting a 0-byte read on the pipe\n");
                 running = false;
             }
 #endif
