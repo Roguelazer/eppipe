@@ -26,12 +26,14 @@
 static int pid = 0;
 static bool running = true;
 
+#ifndef HAS_SIGNALFD
 /* Handler for SIGCHLD */
 void handler(int signal)
 {
     (void) signal;
     running = false;
 }
+#endif
 
 int add_watch(int epfd, int fd, uint32_t events)
 {
