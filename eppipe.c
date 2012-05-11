@@ -27,9 +27,8 @@ static int pid = 0;
 static bool running = true;
 
 /* Handler for SIGCHLD */
-void handler(int signal)
+void handler(int signal __attribute__((unused)))
 {
-    (void) signal;
     running = false;
 }
 
