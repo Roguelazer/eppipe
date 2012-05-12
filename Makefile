@@ -1,8 +1,9 @@
-SOURCES := $(wildcard *.c *.h)
+SOURCES := $(wildcard *.cc)
 TARGETS := eppipe
 PUPPET_TARGETS := eppipe-32 eppipe-64
 
-CFLAGS += -Wall -ggdb -Wextra -pedantic -std=c99
+CFLAGS += -Wall -g -Wextra -pedantic -pthread -std=c++11
+LDFLAGS = -lboost_system
 
 all: $(TARGETS)
 
@@ -17,14 +18,14 @@ clean:
 	rm -rf build
 
 eppipe-32: $(SOURCES)
-	$(CC) -o $@ $(CFLAGS) -m32 $(filter %.c,$^)
+	$(CXX) -o $@ $(CFLAGS) $(LDFLAGS) -m32 $(filter %.cc,$^)
 
 eppipe-64: $(SOURCES)
-	$(CC) -o $@ $(CFLAGS) -m64 $(filter %.c,$^)
+	$(CXX) -o $@ $(CFLAGS) $(LDFLAGS) -m64 $(filter %.cc,$^)
 
 dep:
 	sh ./automake.sh
 
 #### AUTO ####
-eppipe.o: eppipe.c
+eppipe.o: eppipe.cc
 #### END AUTO ####
