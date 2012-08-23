@@ -28,9 +28,8 @@ static bool running = true;
 
 #ifndef HAS_SIGNALFD
 /* Handler for SIGCHLD */
-void handler(int signal)
+void handler(int signal __attribute__((unused)))
 {
-    (void) signal;
     running = false;
 }
 #endif
